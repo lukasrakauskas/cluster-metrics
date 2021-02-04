@@ -1,10 +1,9 @@
-import ParentSize from '@visx/responsive/lib/components/ParentSize'
 import Head from 'next/head'
 import type { FC } from 'react'
 
-import { Graph } from '../components/Graph'
+import { GraphContainer } from '../components/Graph/GraphContainer'
 
-const Metrics: FC = () => {
+const GraphPage: FC = () => {
   return (
     <div>
       <Head>
@@ -14,13 +13,11 @@ const Metrics: FC = () => {
 
       <div className="flex items-center justify-center h-screen bg-gray-200">
         <div className="block w-4/5 md:w-3/5 h-2/3">
-          <ParentSize>
-            {({ width, height }) => <Graph width={width} height={height} />}
-          </ParentSize>
+          <GraphContainer />
         </div>
       </div>
     </div>
   )
 }
 
-export default Metrics
+export default GraphPage

@@ -11,18 +11,28 @@ import {
   withTooltip
 } from '@visx/tooltip'
 import { WithTooltipProvidedProps } from '@visx/tooltip/lib/enhancers/withTooltip'
-import { bisect, bisector, extent, max } from 'd3-array'
+import { bisector, extent, max } from 'd3-array'
 import { timeFormat } from 'd3-time-format'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-type Stock = {
-  date: Date
-  close: number
+import { StockDTO } from './Stock'
+
+type TooltipData = StockDTO
+
+export type AreaProps = {
+  width: number
+  height: number
+  margin?: { top: number; right: number; bottom: number; left: number }
 }
 
-type TooltipData = Stock
+type GraphProps = {
+  stocks: StockDTO[]
+}
 
-// const stock = appleStock.slice(800)
+type GraphEvent =
+  | React.TouchEvent<SVGRectElement>
+  | React.MouseEvent<SVGRectElement>
+
 export const background = '#3b6978'
 export const background2 = '#204051'
 export const accentColor = '#edffea'
@@ -35,20 +45,14 @@ const tooltipStyles = {
 }
 
 // util
-const formatDate = timeFormat("%b %d, '%y")
+const formatDate = timeFormat('%H:%M:%S')
 
 // accessors
-const getDate = (d: Stock) => new Date(d.date)
-const getStockValue = (d: Stock) => d.close
-const bisectDate = bisector<Stock, Date>((d) => new Date(d.date)).left
+const getDate = (d: StockDTO) => new Date(d.date)
+const getStockValue = (d: StockDTO) => d.close
+const bisectDate = bisector<StockDTO, Date>((d) => new Date(d.date)).left
 
-export type AreaProps = {
-  width: number
-  height: number
-  margin?: { top: number; right: number; bottom: number; left: number }
-}
-
-export const Graph = withTooltip<AreaProps, TooltipData>(
+export const Graph = withTooltip<AreaProps & GraphProps, TooltipData>(
   ({
     width,
     height,
@@ -57,66 +61,51 @@ export const Graph = withTooltip<AreaProps, TooltipData>(
     hideTooltip,
     tooltipData,
     tooltipTop = 0,
-    tooltipLeft = 0
-  }: AreaProps & WithTooltipProvidedProps<TooltipData>) => {
+    tooltipLeft = 0,
+    stocks
+  }: AreaProps & GraphProps & WithTooltipProvidedProps<TooltipData>) => {
     if (width < 10) return null
 
     // bounds
     const innerWidth = width - margin.left - margin.right
     const innerHeight = height - margin.top - margin.bottom
 
-    const [stock, setStock] = useState<Stock[]>([])
-
-    useEffect(() => {
-      const stockInterval = setInterval(async () => {
-        const response = await fetch('/api/graph')
-        const data = await response.json()
-        setStock((prev) => [...prev, data])
-      }, 1000)
-
-      return () => {
-        clearInterval(stockInterval)
-      }
-    }, [])
+    const [event, setEvent] = useState<GraphEvent | null>(null)
 
     // scales
     const dateScale = useMemo(() => {
-      if (!stock.length)
-        return scaleTime({ range: [0, 0], domain: [new Date(), new Date()] })
-
-      const lastTwentyStocks =
-        stock.length > 20
-          ? stock.slice(stock.length - 20, stock.length - 1)
-          : stock
-
       return scaleTime({
         range: [margin.left, innerWidth + margin.left],
-        domain: extent(lastTwentyStocks, getDate) as [Date, Date]
+        domain: extent(stocks, getDate) as [Date, Date]
       })
-    }, [innerWidth, margin.left, stock])
+    }, [innerWidth, margin.left, stocks])
 
     const stockValueScale = useMemo(() => {
-      if (!stock.length) return scaleLinear({ range: [0, 0], domain: [0, 0] })
-
       return scaleLinear({
         range: [innerHeight + margin.top, margin.top],
-        domain: [0, (max(stock, getStockValue) || 0) + innerHeight / 3],
-        nice: true
+        domain: [0, (max(stocks, getStockValue) || 0) + innerHeight / 3]
       })
-    }, [margin.top, innerHeight, stock])
+    }, [margin.top, innerHeight, stocks])
 
     // tooltip handler
-    const handleTooltip = useCallback(
-      (
-        event:
-          | React.TouchEvent<SVGRectElement>
-          | React.MouseEvent<SVGRectElement>
-      ) => {
+    const handleTooltip = (event: GraphEvent) => {
+      showTooltipData(event)
+      setEvent(event)
+    }
+
+    useEffect(() => {
+      if (event) {
+        showTooltipData(event)
+      }
+    }, [event, stocks])
+
+    const showTooltipData = useCallback(
+      (event: GraphEvent) => {
         const { x } = localPoint(event) || { x: 0 }
         const x0 = dateScale.invert(x)
-        const index = bisectDate(stock, x0, 1)
-        const d0 = stock[index - 1]
-        const d1 = stock[index]
+        const index = bisectDate(stocks, x0, 1)
+        const d0 = stocks[index - 1]
+        const d1 = stocks[index]
         let d = d0
         if (d1 && getDate(d1)) {
           d =
@@ -181,8 +170,8 @@ export const Graph = withTooltip<AreaProps, TooltipData>(
             strokeOpacity={0.2}
             pointerEvents="none"
           />
-          <AreaClosed<Stock>
-            data={stock}
+          <AreaClosed<StockDTO>
+            data={stocks}
             x={(d) => dateScale(getDate(d)) ?? 0}
             y={(d) => stockValueScale(getStockValue(d)) ?? 0}
             yScale={stockValueScale}
@@ -213,26 +202,6 @@ export const Graph = withTooltip<AreaProps, TooltipData>(
                 pointerEvents="none"
                 strokeDasharray="5,2"
               />
-              <circle
-                cx={tooltipLeft}
-                cy={tooltipTop + 1}
-                r={4}
-                fill="black"
-                fillOpacity={0.1}
-                stroke="black"
-                strokeOpacity={0.1}
-                strokeWidth={2}
-                pointerEvents="none"
-              />
-              <circle
-                cx={tooltipLeft}
-                cy={tooltipTop}
-                r={4}
-                fill={accentColorDark}
-                stroke="white"
-                strokeWidth={2}
-                pointerEvents="none"
-              />
             </g>
           )}
         </svg>
@@ -244,7 +213,7 @@ export const Graph = withTooltip<AreaProps, TooltipData>(
               left={tooltipLeft + 12}
               style={tooltipStyles}
             >
-              {`$${getStockValue(tooltipData)}`}
+              {`$${getStockValue(tooltipData).toFixed(2)}`}
             </TooltipWithBounds>
             <Tooltip
               top={innerHeight + margin.top - 14}
