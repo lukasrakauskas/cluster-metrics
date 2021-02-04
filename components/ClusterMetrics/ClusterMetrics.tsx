@@ -1,14 +1,8 @@
 import { FC, useEffect, useState } from 'react'
 
+import type { ClusterDTO } from './Cluster'
 import type { ClusterStatus } from './ClusterStatus'
 import { MetricsDisplay } from './MetricsDisplay'
-
-interface ClusterDTO {
-  clusterId: string
-  id: number
-  ipAddress: string
-  stage: string
-}
 
 const getClusterNodes = async (): Promise<ClusterDTO[]> => {
   const response = await fetch('/api/metrics')
